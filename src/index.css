@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Manrope:wght@200;300;400;500&display=swap');
+
+body {
+  margin: 0;
+  background: #050807;
+  color: #EAEAEA;
+  font-family: 'Manrope', sans-serif;
+}
+
+/* Scroll indicator float animation */
+@keyframes heroFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Smooth scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050807;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(107, 142, 120, 0.4);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 142, 120, 0.6);
+}
+
+/* Canvas rendering optimization */
+canvas {
+  image-rendering: auto;
+}
+
+/* Disable text selection on hero section */
+.hero-sequence-container {
+  user-select: none;
+  -webkit-user-select: none;
+}
