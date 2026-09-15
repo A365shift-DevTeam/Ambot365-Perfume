@@ -5,11 +5,27 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 gsap.registerPlugin(ScrollTrigger);
 
 const FRAME_COUNT = 240;
+// Every Nth frame loads first so the hero can render before the rest arrive.
+const KEYFRAME_STEP = 8;
 
-// Build the frame path for a given index (1-indexed)
-const framePath = (index) => {
+// Frames live on Cloudinary (uploaded by scripts/upload-frames-cloudinary.mjs).
+// The cloud name is public, so a default keeps deploys working without env vars.
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dghhdz3et';
+// Source frames are 1920x1080 WebP; re-encoding at full width comes out larger
+// than the originals, so the ladder stops at 1280 (the canvas upscales on big screens).
+const FRAME_WIDTHS = [960, 1280];
+
+// Smallest width that still covers the viewport once cover-fit crops the frame.
+const pickFrameWidth = () => {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const needed = Math.max(window.innerWidth, window.innerHeight * (16 / 9)) * dpr;
+  return FRAME_WIDTHS.find((w) => w >= needed) ?? FRAME_WIDTHS[FRAME_WIDTHS.length - 1];
+};
+
+// Build the frame URL for a given index (1-indexed)
+const framePath = (index, width) => {
   const num = String(index).padStart(3, '0');
-  return `/perfume/images-seq/ezgif-frame-${num}.webp`;
+  return `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/f_auto,q_auto:eco,w_${width}/perfume-demo/frames/frame-${num}`;
 };
 
 const HeroSequence = () => {
@@ -25,20 +41,24 @@ const HeroSequence = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const images = [];
-    let loadedCount = 0;
+    let cancelled = false;
 
-    // Set canvas size to match viewport
+    // Set canvas size to match viewport (resizing clears the canvas, so redraw)
     const setCanvasSize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      renderFrame(Math.round(frameIndexRef.current.value));
     };
-    setCanvasSize();
-    window.addEventListener('resize', setCanvasSize);
+    const isReady = (img) => img && img.complete && img.naturalWidth > 0;
 
-    // Render a frame on the canvas (cover-fit)
-    const renderFrame = (index) => {
-      const img = images[index];
-      if (!img || !img.complete) return;
+    // Render a frame on the canvas (cover-fit). If it hasn't loaded yet,
+    // fall back to the nearest loaded frame so scrubbing never goes blank.
+    function renderFrame(index) {
+      let img = images[index];
+      for (let d = 1; !isReady(img) && d < FRAME_COUNT; d++) {
+        img = isReady(images[index - d]) ? images[index - d] : images[index + d];
+      }
+      if (!isReady(img)) return;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -54,26 +74,50 @@ const HeroSequence = () => {
       const sy = (ch - sh) / 2;
 
       ctx.drawImage(img, sx, sy, sw, sh);
-    };
+    }
 
-    // Preload all frames
-    const preloadImages = () => {
-      for (let i = 0; i < FRAME_COUNT; i++) {
+    setCanvasSize();
+    window.addEventListener('resize', setCanvasSize);
+
+    const loadFrame = (i, width) =>
+      new Promise((resolve) => {
         const img = new Image();
-        img.src = framePath(i + 1);
-        img.onload = () => {
-          loadedCount++;
-          const progress = Math.round((loadedCount / FRAME_COUNT) * 100);
-          setLoadProgress(progress);
-          if (loadedCount === FRAME_COUNT) {
-            setLoaded(true);
-            renderFrame(0);
-            initScrollAnimation();
-          }
-        };
+        img.decoding = 'async';
+        img.onload = img.onerror = () => resolve();
+        img.src = framePath(i + 1, width);
         images[i] = img;
+      });
+
+    // Load keyframes first (drives the loader), then backfill the rest
+    const preloadImages = async () => {
+      const width = pickFrameWidth();
+      const keyframes = [];
+      const others = [];
+      for (let i = 0; i < FRAME_COUNT; i++) {
+        (i % KEYFRAME_STEP === 0 || i === FRAME_COUNT - 1 ? keyframes : others).push(i);
       }
       imagesRef.current = images;
+
+      let keyLoaded = 0;
+      await Promise.all(
+        keyframes.map((i) =>
+          loadFrame(i, width).then(() => {
+            keyLoaded++;
+            if (!cancelled) setLoadProgress(Math.round((keyLoaded / keyframes.length) * 100));
+          })
+        )
+      );
+      if (cancelled) return;
+
+      setLoaded(true);
+      renderFrame(0);
+      initScrollAnimation();
+
+      // Backfill a few at a time so it doesn't compete with scrolling
+      const BATCH = 6;
+      for (let b = 0; b < others.length && !cancelled; b += BATCH) {
+        await Promise.all(others.slice(b, b + BATCH).map((i) => loadFrame(i, width)));
+      }
     };
 
     // Initialize GSAP ScrollTrigger animation
@@ -102,6 +146,7 @@ const HeroSequence = () => {
     preloadImages();
 
     return () => {
+      cancelled = true;
       window.removeEventListener('resize', setCanvasSize);
       ScrollTrigger.getAll().forEach((t) => t.kill());
     };
