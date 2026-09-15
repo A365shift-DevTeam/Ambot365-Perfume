@@ -1,21 +1,30 @@
 import React, { useEffect } from 'react';
 import Lenis from 'lenis';
+import 'lenis/dist/lenis.css';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import HeroSequence from './components/HeroSequence';
 
 const Perfume = () => {
   useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
+
     const lenis = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      direction: 'vertical',
-      smooth: true,
+      anchors: true,
     });
-    const raf = (t) => {
-      lenis.raf(t);
-      requestAnimationFrame(raf);
+
+    // Drive Lenis from GSAP's ticker so ScrollTrigger stays in sync with the smoothed scroll
+    lenis.on('scroll', ScrollTrigger.update);
+    const tick = (time) => lenis.raf(time * 1000);
+    gsap.ticker.add(tick);
+    gsap.ticker.lagSmoothing(0);
+
+    return () => {
+      gsap.ticker.remove(tick);
+      lenis.destroy();
     };
-    requestAnimationFrame(raf);
-    return () => lenis.destroy();
   }, []);
 
   const perfumeImages = {
@@ -37,18 +46,17 @@ const Perfume = () => {
           left: 0,
           right: 0,
           zIndex: 50,
-          padding: '1.5rem 4rem',
+          padding: '0.75rem 3rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'rgba(5,8,7,0.8)',
-          backdropFilter: 'blur(12px)',
+          background: 'transparent',
         }}
       >
         <div
           style={{
             fontFamily: 'Cinzel,serif',
-            fontSize: '1.5rem',
+            fontSize: '1.15rem',
             letterSpacing: '0.1em',
           }}
         >
@@ -57,8 +65,8 @@ const Perfume = () => {
         <div
           style={{
             display: 'flex',
-            gap: '2.5rem',
-            fontSize: '0.85rem',
+            gap: '2rem',
+            fontSize: '0.75rem',
             letterSpacing: '0.15em',
             textTransform: 'uppercase',
           }}
@@ -70,8 +78,8 @@ const Perfume = () => {
         <button
           style={{
             border: '1px solid #6B8E78',
-            padding: '0.6rem 1.6rem',
-            fontSize: '0.8rem',
+            padding: '0.4rem 1.2rem',
+            fontSize: '0.7rem',
             letterSpacing: '0.1em',
             background: 'transparent',
             color: '#EAEAEA',
